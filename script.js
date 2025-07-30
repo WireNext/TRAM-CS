@@ -34,8 +34,11 @@ function iniciarMapa(stops, stopTimes, trips, routes, calendarDates) {
 
   const serviciosHoy = obtenerServiciosHoy(calendarDates);
 
+  // Grupo de clusters para agrupar marcadores
+  const markersCluster = L.markerClusterGroup();
+
   stops.forEach(stop => {
-    const marker = L.marker([stop.stop_lat, stop.stop_lon]).addTo(map);
+    const marker = L.marker([stop.stop_lat, stop.stop_lon]);
     marker.bindPopup("Cargando...");
 
     marker.on('click', () => {
@@ -76,7 +79,11 @@ function iniciarMapa(stops, stopTimes, trips, routes, calendarDates) {
 
       marker.setPopupContent(html);
     });
+
+    markersCluster.addLayer(marker);
   });
+
+  map.addLayer(markersCluster);
 }
 
 cargarDatosGTFS();
