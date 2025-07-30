@@ -1,22 +1,36 @@
 async function cargarDatosGTFS() {
   const baseURL = 'public/gtfs/';
 
-  const [routes, trips, stops, stopTimes] = await Promise.all([
+  const [routes, trips, stops, stopTimes, calendarDates] = await Promise.all([
     fetch(baseURL + 'routes.json').then(r => r.json()),
     fetch(baseURL + 'trips.json').then(r => r.json()),
     fetch(baseURL + 'stops.json').then(r => r.json()),
-    fetch(baseURL + 'stop_times.json').then(r => r.json())
+    fetch(baseURL + 'stop_times.json').then(r => r.json()),
+    fetch(baseURL + 'calendar_dates.json').then(r => r.json())
   ]);
 
-  iniciarInterfaz(routes, trips, stops, stopTimes);
+  const serviciosHoy = filtrarServiciosActivosHoy(calendarDates);
+  const viajesHoy = trips.filter(t => serviciosHoy.includes(t.service_id));
+
+  iniciarInterfaz(routes, viajesHoy, stops, stopTimes);
+}
+
+function filtrarServiciosActivosHoy(calendarDates) {
+  const hoy = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+  return calendarDates
+    .filter(cd => cd.date === hoy && cd.exception_type === '1')
+    .map(cd => cd.service_id);
 }
 
 function iniciarInterfaz(routes, trips, stops, stopTimes) {
   const selectLineas = document.getElementById('lineas');
   const listaHorarios = document.getElementById('resultados');
 
-  // Rellenar select con rutas
-  routes.forEach(route => {
+  const routeIdsDisponibles = [...new Set(trips.map(t => t.route_id))];
+  const rutasDisponibles = routes.filter(r => routeIdsDisponibles.includes(r.route_id));
+
+  rutasDisponibles.forEach(route => {
     const option = document.createElement('option');
     option.value = route.route_id;
     option.textContent = `${route.route_short_name} - ${route.route_long_name}`;
@@ -25,22 +39,17 @@ function iniciarInterfaz(routes, trips, stops, stopTimes) {
 
   selectLineas.addEventListener('change', () => {
     const routeId = selectLineas.value;
-
-    // Limpiar resultados anteriores
     listaHorarios.innerHTML = '';
 
-    // Buscar los viajes de esa ruta
-    const viajes = trips.filter(t => t.route_id === routeId);
-
-    if (viajes.length === 0) {
-      listaHorarios.innerHTML = '<li>No hay viajes disponibles para esta ruta.</li>';
+    const viajesRuta = trips.filter(t => t.route_id === routeId);
+    if (viajesRuta.length === 0) {
+      listaHorarios.innerHTML = '<li>No hay viajes activos para hoy.</li>';
       return;
     }
 
-    // Solo usamos el primer viaje (como ejemplo simple)
-    const viaje = viajes[0];
+    const trip = viajesRuta[0]; // puedes extenderlo para mostrar todos
     const horarios = stopTimes
-      .filter(st => st.trip_id === viaje.trip_id)
+      .filter(st => st.trip_id === trip.trip_id)
       .sort((a, b) => a.stop_sequence - b.stop_sequence);
 
     horarios.forEach(horario => {
@@ -51,6 +60,3 @@ function iniciarInterfaz(routes, trips, stops, stopTimes) {
     });
   });
 }
-
-// Iniciar al cargar
-cargarDatosGTFS();
