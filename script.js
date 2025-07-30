@@ -47,6 +47,21 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
     popupAnchor: [0, -30]
   });
 
+  // Añadimos estilos para parpadeo
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @keyframes parpadeo {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .parpadeo {
+      animation: parpadeo 1s infinite;
+      font-weight: bold;
+      color: red;
+    }
+  `;
+  document.head.appendChild(style);
+
   const clusterGroup = L.markerClusterGroup();
 
   stops.forEach(stop => {
@@ -81,18 +96,14 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
         return fecha;
       }
 
-      // Convertimos horarios en objetos con minutos para calcular diferencia
       const horariosConDiff = horarios.map(h => {
         const fechaSalida = horaAFecha(h.hora);
         let diffMin = (fechaSalida - ahora) / 60000;
-        if (diffMin < 0) diffMin += 24 * 60; // Para servicios tras medianoche
+        if (diffMin < 0) diffMin += 24 * 60;
         return { ...h, diffMin, fechaSalida };
       });
 
-      // Ordenamos por tiempo que queda para pasar
       horariosConDiff.sort((a, b) => a.diffMin - b.diffMin);
-
-      // Filtramos solo futuros (diffMin >= 0)
       const futuros = horariosConDiff.filter(h => h.diffMin >= 0);
 
       if (futuros.length === 0) {
@@ -100,16 +111,18 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
         return;
       }
 
-      // 2 primeros con minutos restantes
       const proximosMinutos = futuros.slice(0, 2);
-
-      // 3 siguientes con hora exacta
       const siguientesHoras = futuros.slice(2, 5);
 
       let html = `<strong>${stop.stop_name}</strong><br><ul>`;
 
       proximosMinutos.forEach(h => {
-        html += `<li><b>${h.linea}</b> ${h.nombre}: en ${Math.round(h.diffMin)} min</li>`;
+        // Si quedan 1 minuto o menos, añadimos la clase parpadeo
+        if (h.diffMin <= 1) {
+          html += `<li><b>${h.linea}</b> ${h.nombre}: <span class="parpadeo">en ${Math.round(h.diffMin)} min</span></li>`;
+        } else {
+          html += `<li><b>${h.linea}</b> ${h.nombre}: en ${Math.round(h.diffMin)} min</li>`;
+        }
       });
 
       siguientesHoras.forEach(h => {
