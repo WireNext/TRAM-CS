@@ -19,55 +19,14 @@ async function cargarDatosGTFS() {
   }
 }
 
-function pintarShapes(map, shapes) {
-  // Agrupar puntos por shape_id
-  const shapesGrouped = {};
-
-  shapes.forEach(pt => {
-    if (!shapesGrouped[pt.shape_id]) {
-      shapesGrouped[pt.shape_id] = [];
-    }
-    shapesGrouped[pt.shape_id].push(pt);
-  });
-
-  const allLatLngs = [];
-
-  // Crear una polilínea para cada shape_id
-  for (const shape_id in shapesGrouped) {
-    const points = shapesGrouped[shape_id];
-    points.sort((a, b) => Number(a.shape_pt_sequence) - Number(b.shape_pt_sequence));
-
-    const latlngs = points.map(p => {
-      const lat = parseFloat(p.shape_pt_lat);
-      const lon = parseFloat(p.shape_pt_lon);
-      allLatLngs.push([lat, lon]);
-      return [lat, lon];
-    });
-
-    L.polyline(latlngs, {
-      color: '#007bff',
-      weight: 3,
-      opacity: 0.7
-    }).addTo(map);
-  }
-
-  // Ajustar la vista para que se vean todas las shapes
-  if (allLatLngs.length > 0) {
-    const bounds = L.latLngBounds(allLatLngs);
-    map.fitBounds(bounds);
-  }
-}
-
 function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
-  const map = L.map('map').setView([39.985, -0.5], 13);
+  const map = L.map('map').setView([39.985, -0.5], 13); // Vista general Castelló
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  // Pintar las líneas shapes
-  pintarShapes(map, shapes);
-
+  // Icono personalizado para paradas
   const busDivIcon = L.divIcon({
     html: `<div style="
       background: #0078A8; 
@@ -89,6 +48,7 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
     popupAnchor: [0, -30]
   });
 
+  // Añadir marcadores de paradas con clustering
   const clusterGroup = L.markerClusterGroup();
 
   stops.forEach(stop => {
@@ -115,10 +75,24 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
         .sort((a, b) => a.hora.localeCompare(b.hora));
 
       const ahora = new Date();
-      const horaActual = ahora.getHours().toString().padStart(2, '0') + ':' +
-                         ahora.getMinutes().toString().padStart(2, '0') + ':00';
 
-      const siguientes = horarios.filter(h => h.hora >= horaActual).slice(0, 5);
+      function horaAFecha(horaStr) {
+        const [hh, mm, ss] = horaStr.split(':').map(Number);
+        const fecha = new Date(ahora);
+        fecha.setHours(hh, mm, ss, 0);
+        return fecha;
+      }
+
+      const siguientes = horarios
+        .map(h => {
+          const fechaSalida = horaAFecha(h.hora);
+          let diffMin = (fechaSalida - ahora) / 60000;
+          if (diffMin < 0) diffMin += 24 * 60; // Para horarios que cruzan la medianoche
+          return { ...h, diffMin };
+        })
+        .filter(h => h.diffMin >= 0)
+        .sort((a, b) => a.diffMin - b.diffMin)
+        .slice(0, 2);
 
       if (siguientes.length === 0) {
         marker.setPopupContent(`<strong>${stop.stop_name}</strong><br>No hay más servicios hoy.`);
@@ -127,7 +101,7 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
 
       const html = `<strong>${stop.stop_name}</strong><br><ul>` +
         siguientes.map(h =>
-          `<li><b>${h.linea}</b> ${h.nombre}: ${h.hora}</li>`
+          `<li><b>${h.linea}</b> ${h.nombre}: en ${Math.round(h.diffMin)} min</li>`
         ).join('') +
         `</ul>`;
 
@@ -138,6 +112,29 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
   });
 
   map.addLayer(clusterGroup);
+
+  // Dibujar shapes (líneas de ruta)
+  // Agrupar puntos por shape_id y ordenarlos por shape_pt_sequence
+  const shapesPorId = {};
+  shapes.forEach(pt => {
+    if (!shapesPorId[pt.shape_id]) shapesPorId[pt.shape_id] = [];
+    shapesPorId[pt.shape_id].push(pt);
+  });
+
+  for (const shapeId in shapesPorId) {
+    // Ordenar por sequence
+    shapesPorId[shapeId].sort((a, b) => parseInt(a.shape_pt_sequence) - parseInt(b.shape_pt_sequence));
+
+    // Crear array de latlngs para la polilínea
+    const latlngs = shapesPorId[shapeId].map(pt => [parseFloat(pt.shape_pt_lat), parseFloat(pt.shape_pt_lon)]);
+
+    // Añadir la línea al mapa
+    L.polyline(latlngs, {
+      color: 'blue',
+      weight: 3,
+      opacity: 0.7
+    }).addTo(map);
+  }
 }
 
 cargarDatosGTFS();
