@@ -20,13 +20,12 @@ async function cargarDatosGTFS() {
 }
 
 function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
-  const map = L.map('map').setView([39.985, -0.5], 13); // Vista general Castelló
+  const map = L.map('map').setView([39.985, -0.5], 13);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  // Icono personalizado para paradas
   const busDivIcon = L.divIcon({
     html: `<div style="
       background: #0078A8; 
@@ -48,7 +47,6 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
     popupAnchor: [0, -30]
   });
 
-  // Añadir marcadores de paradas con clustering
   const clusterGroup = L.markerClusterGroup();
 
   stops.forEach(stop => {
@@ -83,27 +81,42 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
         return fecha;
       }
 
-      const siguientes = horarios
-        .map(h => {
-          const fechaSalida = horaAFecha(h.hora);
-          let diffMin = (fechaSalida - ahora) / 60000;
-          if (diffMin < 0) diffMin += 24 * 60; // Para horarios que cruzan la medianoche
-          return { ...h, diffMin };
-        })
-        .filter(h => h.diffMin >= 0)
-        .sort((a, b) => a.diffMin - b.diffMin)
-        .slice(0, 2);
+      // Convertimos horarios en objetos con minutos para calcular diferencia
+      const horariosConDiff = horarios.map(h => {
+        const fechaSalida = horaAFecha(h.hora);
+        let diffMin = (fechaSalida - ahora) / 60000;
+        if (diffMin < 0) diffMin += 24 * 60; // Para servicios tras medianoche
+        return { ...h, diffMin, fechaSalida };
+      });
 
-      if (siguientes.length === 0) {
+      // Ordenamos por tiempo que queda para pasar
+      horariosConDiff.sort((a, b) => a.diffMin - b.diffMin);
+
+      // Filtramos solo futuros (diffMin >= 0)
+      const futuros = horariosConDiff.filter(h => h.diffMin >= 0);
+
+      if (futuros.length === 0) {
         marker.setPopupContent(`<strong>${stop.stop_name}</strong><br>No hay más servicios hoy.`);
         return;
       }
 
-      const html = `<strong>${stop.stop_name}</strong><br><ul>` +
-        siguientes.map(h =>
-          `<li><b>${h.linea}</b> ${h.nombre}: en ${Math.round(h.diffMin)} min</li>`
-        ).join('') +
-        `</ul>`;
+      // 2 primeros con minutos restantes
+      const proximosMinutos = futuros.slice(0, 2);
+
+      // 3 siguientes con hora exacta
+      const siguientesHoras = futuros.slice(2, 5);
+
+      let html = `<strong>${stop.stop_name}</strong><br><ul>`;
+
+      proximosMinutos.forEach(h => {
+        html += `<li><b>${h.linea}</b> ${h.nombre}: en ${Math.round(h.diffMin)} min</li>`;
+      });
+
+      siguientesHoras.forEach(h => {
+        html += `<li><b>${h.linea}</b> ${h.nombre}: ${h.hora}</li>`;
+      });
+
+      html += '</ul>';
 
       marker.setPopupContent(html);
     });
@@ -113,8 +126,7 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
 
   map.addLayer(clusterGroup);
 
-  // Dibujar shapes (líneas de ruta)
-  // Agrupar puntos por shape_id y ordenarlos por shape_pt_sequence
+  // Dibujar shapes
   const shapesPorId = {};
   shapes.forEach(pt => {
     if (!shapesPorId[pt.shape_id]) shapesPorId[pt.shape_id] = [];
@@ -122,13 +134,8 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
   });
 
   for (const shapeId in shapesPorId) {
-    // Ordenar por sequence
     shapesPorId[shapeId].sort((a, b) => parseInt(a.shape_pt_sequence) - parseInt(b.shape_pt_sequence));
-
-    // Crear array de latlngs para la polilínea
     const latlngs = shapesPorId[shapeId].map(pt => [parseFloat(pt.shape_pt_lat), parseFloat(pt.shape_pt_lon)]);
-
-    // Añadir la línea al mapa
     L.polyline(latlngs, {
       color: 'blue',
       weight: 3,
