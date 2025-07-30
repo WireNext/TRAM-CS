@@ -6,7 +6,9 @@ async function cargarDatosGTFS() {
       fetch(baseURL + 'trips.json').then(r => r.json()),
       fetch(baseURL + 'stops.json').then(r => r.json()),
       fetch(baseURL + 'stop_times.json').then(r => r.json()),
-      fetch(baseURL + 'calendar_dates.json').then(r => r.json())
+      fetch(baseURL + 'calendar_dates.json').then(r => r.json()),
+      fetch(baseURL + 'shapes.json').then(r => r.json())
+
     ]);
 
     console.log("✅ Datos cargados");
