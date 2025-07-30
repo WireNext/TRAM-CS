@@ -4,7 +4,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Icono personalizado
+// Icono personalizado para paradas
 const paradaIcon = L.icon({
   iconUrl: 'https://cdn-icons-png.flaticon.com/512/252/252025.png',
   iconSize: [24, 24],
@@ -13,7 +13,7 @@ const paradaIcon = L.icon({
 });
 
 // Cargar paradas
-fetch('gtfs/stops.json')
+fetch('public/gtfs/stops.json')
   .then(res => res.json())
   .then(data => {
     data.forEach(stop => {
@@ -21,20 +21,21 @@ fetch('gtfs/stops.json')
         .addTo(map)
         .bindPopup(`<b>${stop.stop_name}</b>`);
     });
-  });
+  })
+  .catch(err => console.error("Error cargando paradas:", err));
 
-// Cargar shapes
-fetch('gtfs/shapes.geojson')
+// Cargar shapes (líneas)
+fetch('public/gtfs/shapes.geojson')
   .then(res => res.json())
   .then(geojson => {
     L.geoJSON(geojson, {
-      style: feature => ({
-        color: feature.properties.color || '#000',
+      style: {
+        color: '#3388ff',
         weight: 4
-      }),
+      },
       onEachFeature: (feature, layer) => {
-        const props = feature.properties;
-        layer.bindPopup(`<b>${props.route_short_name}</b><br>${props.route_long_name}`);
+        layer.bindPopup(`Shape ID: ${feature.properties.shape_id}`);
       }
     }).addTo(map);
-  });
+  })
+  .catch(err => console.error("Error cargando shapes:", err));
