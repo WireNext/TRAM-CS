@@ -1,17 +1,21 @@
 async function cargarDatosGTFS() {
-  const baseURL = 'public/gtfs/';
-  const [routes, trips, stops, stopTimes, calendarDates] = await Promise.all([
-    fetch(baseURL + 'routes.json').then(r => r.json()),
-    fetch(baseURL + 'trips.json').then(r => r.json()),
-    fetch(baseURL + 'stops.json').then(r => r.json()),
-    fetch(baseURL + 'stop_times.json').then(r => r.json()),
-    fetch(baseURL + 'calendar_dates.json').then(r => r.json())
-  ]);
+  try {
+    const baseURL = 'public/gtfs/';
+    const [routes, trips, stops, stopTimes, calendarDates] = await Promise.all([
+      fetch(baseURL + 'routes.json').then(r => r.json()),
+      fetch(baseURL + 'trips.json').then(r => r.json()),
+      fetch(baseURL + 'stops.json').then(r => r.json()),
+      fetch(baseURL + 'stop_times.json').then(r => r.json()),
+      fetch(baseURL + 'calendar_dates.json').then(r => r.json())
+    ]);
 
-  const serviciosActivos = obtenerServiciosHoy(calendarDates);
-  const tripsHoy = trips.filter(t => serviciosActivos.includes(t.service_id));
+    console.log("✅ Datos cargados");
+    iniciarMapa(stops, stopTimes, trips, routes, calendarDates);
 
-  iniciarMapa(stops, stopTimes, tripsHoy, routes);
+  } catch (e) {
+    console.error("❌ Error cargando GTFS:", e);
+    alert("Error cargando datos. Mira la consola.");
+  }
 }
 
 function obtenerServiciosHoy(calendarDates) {
@@ -21,12 +25,14 @@ function obtenerServiciosHoy(calendarDates) {
     .map(cd => cd.service_id);
 }
 
-function iniciarMapa(stops, stopTimes, trips, routes) {
-  const map = L.map('map').setView([39.5, -0.4], 9); // Vista general de la Comunitat Valenciana
+function iniciarMapa(stops, stopTimes, trips, routes, calendarDates) {
+  const map = L.map('map').setView([39.5, -0.4], 9); // Comunitat Valenciana
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
+
+  const serviciosHoy = obtenerServiciosHoy(calendarDates);
 
   stops.forEach(stop => {
     const marker = L.marker([stop.stop_lat, stop.stop_lon]).addTo(map);
@@ -37,7 +43,7 @@ function iniciarMapa(stops, stopTimes, trips, routes) {
         .filter(st => st.stop_id === stop.stop_id)
         .map(st => {
           const trip = trips.find(t => t.trip_id === st.trip_id);
-          if (!trip) return null;
+          if (!trip || !serviciosHoy.includes(trip.service_id)) return null;
 
           const ruta = routes.find(r => r.route_id === trip.route_id);
           if (!ruta) return null;
@@ -55,7 +61,7 @@ function iniciarMapa(stops, stopTimes, trips, routes) {
       const horaActual = ahora.getHours().toString().padStart(2, '0') + ':' + 
                          ahora.getMinutes().toString().padStart(2, '0') + ':00';
 
-      const siguientes = horarios.filter(h => h.hora >= horaActual).slice(0, 5); // próximos 5
+      const siguientes = horarios.filter(h => h.hora >= horaActual).slice(0, 5);
 
       if (siguientes.length === 0) {
         marker.setPopupContent(`<strong>${stop.stop_name}</strong><br>No hay más servicios hoy.`);
