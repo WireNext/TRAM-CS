@@ -10,7 +10,7 @@ async function cargarDatosGTFS() {
     ]);
 
     console.log("✅ Datos cargados");
-    iniciarMapa(stops, stopTimes, trips, routes, calendarDates);
+    iniciarMapa(stops, stopTimes, trips, routes);
 
   } catch (e) {
     console.error("❌ Error cargando GTFS:", e);
@@ -18,27 +18,39 @@ async function cargarDatosGTFS() {
   }
 }
 
-function obtenerServiciosHoy(calendarDates) {
-  const hoy = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  return calendarDates
-    .filter(cd => cd.date === hoy && cd.exception_type === '1')
-    .map(cd => cd.service_id);
-}
-
-function iniciarMapa(stops, stopTimes, trips, routes, calendarDates) {
-  const map = L.map('map').setView([39.5, -0.4], 9); // Comunitat Valenciana
+function iniciarMapa(stops, stopTimes, trips, routes) {
+  const map = L.map('map').setView([39.5, -0.4], 9); // Vista general Comunitat Valenciana
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  const serviciosHoy = obtenerServiciosHoy(calendarDates);
+  // Creamos el icono personalizado con un círculo y emoji bus
+  const busDivIcon = L.divIcon({
+    html: `<div style="
+      background: #0078A8; 
+      border-radius: 50%; 
+      width: 30px; 
+      height: 30px; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      color: white; 
+      font-weight: bold;
+      font-size: 18px;
+      ">
+      🚌
+      </div>`,
+    className: '',
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    popupAnchor: [0, -30]
+  });
 
-  // Grupo de clusters para agrupar marcadores
-  const markersCluster = L.markerClusterGroup();
+  const clusterGroup = L.markerClusterGroup();
 
   stops.forEach(stop => {
-    const marker = L.marker([stop.stop_lat, stop.stop_lon]);
+    const marker = L.marker([stop.stop_lat, stop.stop_lon], { icon: busDivIcon });
     marker.bindPopup("Cargando...");
 
     marker.on('click', () => {
@@ -46,7 +58,7 @@ function iniciarMapa(stops, stopTimes, trips, routes, calendarDates) {
         .filter(st => st.stop_id === stop.stop_id)
         .map(st => {
           const trip = trips.find(t => t.trip_id === st.trip_id);
-          if (!trip || !serviciosHoy.includes(trip.service_id)) return null;
+          if (!trip) return null;
 
           const ruta = routes.find(r => r.route_id === trip.route_id);
           if (!ruta) return null;
@@ -61,7 +73,7 @@ function iniciarMapa(stops, stopTimes, trips, routes, calendarDates) {
         .sort((a, b) => a.hora.localeCompare(b.hora));
 
       const ahora = new Date();
-      const horaActual = ahora.getHours().toString().padStart(2, '0') + ':' + 
+      const horaActual = ahora.getHours().toString().padStart(2, '0') + ':' +
                          ahora.getMinutes().toString().padStart(2, '0') + ':00';
 
       const siguientes = horarios.filter(h => h.hora >= horaActual).slice(0, 5);
@@ -80,10 +92,10 @@ function iniciarMapa(stops, stopTimes, trips, routes, calendarDates) {
       marker.setPopupContent(html);
     });
 
-    markersCluster.addLayer(marker);
+    clusterGroup.addLayer(marker);
   });
 
-  map.addLayer(markersCluster);
+  map.addLayer(clusterGroup);
 }
 
 cargarDatosGTFS();
