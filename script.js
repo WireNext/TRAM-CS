@@ -1,10 +1,10 @@
-const map = L.map('map').setView([39.9864, -0.0513], 13); // Centrado en Castellón
+const map = L.map('map').setView([39.9864, -0.0513], 13); // Castellón
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Icono personalizado para paradas
+// Icono de parada
 const paradaIcon = L.icon({
   iconUrl: 'https://cdn-icons-png.flaticon.com/512/252/252025.png',
   iconSize: [24, 24],
@@ -12,87 +12,64 @@ const paradaIcon = L.icon({
   popupAnchor: [0, -24]
 });
 
-let stops = [];
-let stopTimes = [];
-let trips = [];
-let routes = [];
-let shapesGeoJSON = null;
+let stops = [], stopTimes = [], trips = [], routes = [], shapes = null;
 
-// Cargar todos los datos necesarios
 Promise.all([
-  fetch('public/gtfs/stops.json').then(res => res.json()),
-  fetch('public/gtfs/stop_times.json').then(res => res.json()),
-  fetch('public/gtfs/trips.json').then(res => res.json()),
-  fetch('public/gtfs/routes.json').then(res => res.json()),
-  fetch('public/gtfs/shapes.geojson').then(res => res.json())
-]).then(([stopsData, stopTimesData, tripsData, routesData, shapesData]) => {
-  stops = stopsData;
-  stopTimes = stopTimesData;
-  trips = tripsData;
-  routes = routesData;
-  shapesGeoJSON = shapesData;
+  fetch('public/gtfs/stops.json').then(r => r.json()),
+  fetch('public/gtfs/stop_times.json').then(r => r.json()),
+  fetch('public/gtfs/trips.json').then(r => r.json()),
+  fetch('public/gtfs/routes.json').then(r => r.json()),
+  fetch('public/gtfs/shapes.geojson').then(r => r.json())
+]).then(([st, stt, tr, ro, sh]) => {
+  stops = st;
+  stopTimes = stt;
+  trips = tr;
+  routes = ro;
+  shapes = sh;
 
-  // Pintar paradas
   stops.forEach(stop => {
-    const marker = L.marker([parseFloat(stop.stop_lat), parseFloat(stop.stop_lon)], { icon: paradaIcon }).addTo(map);
+    const marker = L.marker([+stop.stop_lat, +stop.stop_lon], { icon: paradaIcon }).addTo(map);
 
     marker.on('click', () => {
-      const stopId = stop.stop_id;
       const ahora = new Date();
-
-      const horarios = stopTimes
-        .filter(st => st.stop_id === stopId)
+      const llegadas = stopTimes
+        .filter(st => st.stop_id === stop.stop_id)
         .map(st => {
           const trip = trips.find(t => t.trip_id === st.trip_id);
           return {
-            time: st.arrival_time,
-            route: trip ? trip.route_id : "Desconocida"
+            hora: st.arrival_time,
+            route_id: trip?.route_id
           };
         })
-        .filter(item => {
-          const [hH, hM, hS] = item.time.split(":").map(Number);
-          const horaLlegada = new Date();
-          horaLlegada.setHours(hH, hM, hS || 0, 0);
-          return horaLlegada > ahora;
+        .filter(e => {
+          const [h, m, s] = e.hora.split(":").map(Number);
+          const llegada = new Date();
+          llegada.setHours(h, m, s || 0);
+          return llegada > ahora;
         })
-        .sort((a, b) => a.time.localeCompare(b.time))
+        .sort((a, b) => a.hora.localeCompare(b.hora))
         .slice(0, 5);
 
       let html = `<b>${stop.stop_name}</b><br><u>Próximas llegadas:</u><ul>`;
-      horarios.forEach(el => {
-        html += `<li>${el.time} - Ruta ${el.route}</li>`;
+      llegadas.forEach(l => {
+        const ruta = routes.find(r => r.route_id === l.route_id);
+        html += `<li>${l.hora} - ${ruta?.route_short_name || "?"}</li>`;
       });
       html += '</ul>';
 
       marker.bindPopup(html).openPopup();
 
-      // Mostrar las líneas (shapes) asociadas a las rutas
-      const routeIdsEnParada = new Set(horarios.map(el => el.route));
+      // Dibujar rutas
+      const routesToDraw = new Set(llegadas.map(l => l.route_id));
+      if (window.shapesLayer) map.removeLayer(window.shapesLayer);
 
-      if (window.shapeLayer) {
-        map.removeLayer(window.shapeLayer);
-      }
-
-      const colores = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4'];
-
-      window.shapeLayer = L.geoJSON(shapesGeoJSON, {
-        filter: feature => routeIdsEnParada.has(feature.properties.route_id),
-        style: feature => {
-          const index = Array.from(routeIdsEnParada).indexOf(feature.properties.route_id);
-          return {
-            color: colores[index % colores.length],
-            weight: 4
-          };
-        },
-        onEachFeature: (feature, layer) => {
-          const route = routes.find(r => r.route_id === feature.properties.route_id);
-          if (route) {
-            layer.bindPopup(`<b>${route.route_short_name}</b><br>${route.route_long_name}`);
-          }
+      window.shapesLayer = L.geoJSON(shapes, {
+        filter: f => routesToDraw.has(f.properties.route_id),
+        style: {
+          color: "#ff5733",
+          weight: 4
         }
       }).addTo(map);
     });
   });
-}).catch(error => {
-  console.error("Error al cargar datos:", error);
-});
+}).catch(err => console.error("Error cargando datos:", err));
