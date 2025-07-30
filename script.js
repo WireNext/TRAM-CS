@@ -1,7 +1,7 @@
 async function cargarDatosGTFS() {
   try {
     const baseURL = 'public/gtfs/';
-    const [routes, trips, stops, stopTimes, calendarDates] = await Promise.all([
+    const [routes, trips, stops, stopTimes, calendarDates, shapes] = await Promise.all([
       fetch(baseURL + 'routes.json').then(r => r.json()),
       fetch(baseURL + 'trips.json').then(r => r.json()),
       fetch(baseURL + 'stops.json').then(r => r.json()),
@@ -87,7 +87,7 @@ function iniciarMapa(stops, stopTimes, trips, routes) {
 
       const html = `<strong>${stop.stop_name}</strong><br><ul>` +
         siguientes.map(h =>
-          `<li><b>Línea ${h.linea}</b>: ${h.hora}</li>`
+          `<li><b>${h.linea}</b> ${h.nombre}: ${h.hora}</li>`
         ).join('') +
         `</ul>`;
 
