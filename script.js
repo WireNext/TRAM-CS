@@ -14,25 +14,25 @@ async function cargarDatos() {
       fetch("public/gtfs/stops.json").then(r => r.json()),
       fetch("public/gtfs/stop_times.json").then(r => r.json()),
       fetch("public/gtfs/trips.json").then(r => r.json()),
-      fetch("public/gtfs/shapes.geojson").then(r => r.json())  // notar shapes.geojson
+      fetch("public/gtfs/shapes.json").then(r => r.json())
     ]);
 
     stops = stopsData;
     stopTimes = stopTimesData;
     trips = tripsData;
 
-    // Mostrar shapes como líneas (GeoJSON)
-    for (const feature of shapesData.features) {
-      const shape_id = feature.properties.shape_id;
-      const coords = feature.geometry.coordinates; // [ [lon, lat], ... ]
-      // Leaflet necesita [lat, lon]
-      const latlngs = coords.map(c => [c[1], c[0]]);
-
-      L.polyline(latlngs, {
-        color: '#007bff',
-        weight: 3,
-        opacity: 0.7
-      }).addTo(map);
+    // Dibujar shapes
+    for (const [shape_id, points] of Object.entries(shapesData)) {
+      if (Array.isArray(points)) {
+        const latlngs = points.map(p => [p.lat, p.lon]);
+        L.polyline(latlngs, {
+          color: '#007bff',
+          weight: 3,
+          opacity: 0.7
+        }).addTo(map);
+      } else {
+        console.warn(`Los puntos para shape_id ${shape_id} no son un array`, points);
+      }
     }
 
     // Añadir paradas
