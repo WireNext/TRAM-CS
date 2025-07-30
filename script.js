@@ -7,19 +7,26 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 let stops = [];
 let stopTimes = [];
 let trips = [];
+let routeIdToShortName = {}; // <-- diccionario para mapear route_id a número de línea
 
 async function cargarDatos() {
   try {
-    const [stopsData, stopTimesData, tripsData, shapesData] = await Promise.all([
+    const [stopsData, stopTimesData, tripsData, shapesData, routesData] = await Promise.all([
       fetch("public/gtfs/stops.json").then(r => r.json()),
       fetch("public/gtfs/stop_times.json").then(r => r.json()),
       fetch("public/gtfs/trips.json").then(r => r.json()),
-      fetch("public/gtfs/shapes.json").then(r => r.json())
+      fetch("public/gtfs/shapes.json").then(r => r.json()),
+      fetch("public/gtfs/routes.json").then(r => r.json())  // <-- cargamos routes
     ]);
 
     stops = stopsData;
     stopTimes = stopTimesData;
     trips = tripsData;
+
+    // Crear el diccionario route_id -> route_short_name
+    routesData.forEach(route => {
+      routeIdToShortName[route.route_id] = route.route_short_name;
+    });
 
     // Dibujar shapes
     for (const [shape_id, points] of Object.entries(shapesData)) {
@@ -47,7 +54,9 @@ async function cargarDatos() {
           .slice(0, 5)
           .map(st => {
             const trip = trips.find(t => t.trip_id === st.trip_id);
-            return `${trip?.route_id || "?"} → ${st.arrival_time}`;
+            // En vez de trip.route_id mostramos el número de línea
+            const linea = routeIdToShortName[trip?.route_id] || "?";
+            return `${linea} → ${st.arrival_time}`;
           });
 
         const content = `
