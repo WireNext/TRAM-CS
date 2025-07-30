@@ -1,55 +1,74 @@
 async function cargarDatosGTFS() {
   const baseURL = 'public/gtfs/';
-
-  const [routes, trips, stops, stopTimes] = await Promise.all([
+  const [routes, trips, stops, stopTimes, calendarDates] = await Promise.all([
     fetch(baseURL + 'routes.json').then(r => r.json()),
     fetch(baseURL + 'trips.json').then(r => r.json()),
     fetch(baseURL + 'stops.json').then(r => r.json()),
-    fetch(baseURL + 'stop_times.json').then(r => r.json())
+    fetch(baseURL + 'stop_times.json').then(r => r.json()),
+    fetch(baseURL + 'calendar_dates.json').then(r => r.json())
   ]);
 
-  iniciarBusquedaPorParada(routes, trips, stops, stopTimes);
+  const serviciosActivos = obtenerServiciosHoy(calendarDates);
+  const tripsHoy = trips.filter(t => serviciosActivos.includes(t.service_id));
+
+  iniciarMapa(stops, stopTimes, tripsHoy, routes);
 }
 
-function iniciarBusquedaPorParada(routes, trips, stops, stopTimes) {
-  const selectParadas = document.getElementById('paradas');
-  const lista = document.getElementById('resultados');
+function obtenerServiciosHoy(calendarDates) {
+  const hoy = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return calendarDates
+    .filter(cd => cd.date === hoy && cd.exception_type === '1')
+    .map(cd => cd.service_id);
+}
 
-  // Ordenar alfabéticamente por nombre de parada
-  stops.sort((a, b) => a.stop_name.localeCompare(b.stop_name));
+function iniciarMapa(stops, stopTimes, trips, routes) {
+  const map = L.map('map').setView([39.5, -0.4], 9); // Vista general de la Comunitat Valenciana
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
 
   stops.forEach(stop => {
-    const option = document.createElement('option');
-    option.value = stop.stop_id;
-    option.textContent = stop.stop_name;
-    selectParadas.appendChild(option);
-  });
+    const marker = L.marker([stop.stop_lat, stop.stop_lon]).addTo(map);
+    marker.bindPopup("Cargando...");
 
-  selectParadas.addEventListener('change', () => {
-    const stopId = selectParadas.value;
-    lista.innerHTML = '';
+    marker.on('click', () => {
+      const horarios = stopTimes
+        .filter(st => st.stop_id === stop.stop_id)
+        .map(st => {
+          const trip = trips.find(t => t.trip_id === st.trip_id);
+          if (!trip) return null;
 
-    // Buscar todas las entradas de stop_times para esta parada
-    const horarios = stopTimes.filter(st => st.stop_id === stopId);
+          const ruta = routes.find(r => r.route_id === trip.route_id);
+          if (!ruta) return null;
 
-    if (horarios.length === 0) {
-      lista.innerHTML = '<li>No hay horarios para esta parada.</li>';
-      return;
-    }
+          return {
+            linea: ruta.route_short_name || '',
+            nombre: ruta.route_long_name || '',
+            hora: st.departure_time
+          };
+        })
+        .filter(h => h !== null)
+        .sort((a, b) => a.hora.localeCompare(b.hora));
 
-    horarios.sort((a, b) => a.departure_time.localeCompare(b.departure_time));
+      const ahora = new Date();
+      const horaActual = ahora.getHours().toString().padStart(2, '0') + ':' + 
+                         ahora.getMinutes().toString().padStart(2, '0') + ':00';
 
-    horarios.forEach(horario => {
-      const trip = trips.find(t => t.trip_id === horario.trip_id);
-      if (!trip) return;
+      const siguientes = horarios.filter(h => h.hora >= horaActual).slice(0, 5); // próximos 5
 
-      const ruta = routes.find(r => r.route_id === trip.route_id);
-      if (!ruta) return;
+      if (siguientes.length === 0) {
+        marker.setPopupContent(`<strong>${stop.stop_name}</strong><br>No hay más servicios hoy.`);
+        return;
+      }
 
-      const texto = `${horario.departure_time} - Línea ${ruta.route_short_name || ''} ${ruta.route_long_name || ''}`;
-      const li = document.createElement('li');
-      li.textContent = texto;
-      lista.appendChild(li);
+      const html = `<strong>${stop.stop_name}</strong><br><ul>` +
+        siguientes.map(h =>
+          `<li><b>Línea ${h.linea}</b>: ${h.hora}</li>`
+        ).join('') +
+        `</ul>`;
+
+      marker.setPopupContent(html);
     });
   });
 }
