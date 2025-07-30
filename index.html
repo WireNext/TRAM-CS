@@ -1,13 +1,16 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Horarios de Autobuses</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Horarios de Transporte</title>
 </head>
 <body>
   <h1>Consulta de horarios</h1>
-  <select id="lineas"></select>
+  <label for="lineas">Selecciona una línea:</label>
+  <select id="lineas">
+    <option disabled selected>Elige una línea</option>
+  </select>
+
   <ul id="resultados"></ul>
 
   <script src="script.js"></script>
