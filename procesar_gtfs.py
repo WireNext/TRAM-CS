@@ -5,28 +5,29 @@ import json
 import os
 from collections import defaultdict
 
+# 1. Descargar el GTFS
 url = "https://gvinterbus.gva.es/estatico/gtfs.zip"
-
 print("📦 Descargando GTFS...")
 r = requests.get(url)
 with open("gtfs.zip", "wb") as f:
     f.write(r.content)
 
+# 2. Extraer archivos
 print("📂 Extrayendo archivos...")
 with zipfile.ZipFile("gtfs.zip", 'r') as zip_ref:
     zip_ref.extractall("gtfs")
 
+# 3. Crear carpeta de salida
 os.makedirs("public/gtfs", exist_ok=True)
 
-# 1. Filtrar route_id de T1 a T4
+# 4. Filtrar rutas deseadas
 rutas_deseadas = {"T1", "T2", "T3", "T4"}
-route_ids = set()
 with open("gtfs/routes.txt", encoding="utf-8") as f:
     reader = csv.DictReader(f)
     routes_filtradas = [row for row in reader if row["route_short_name"] in rutas_deseadas]
     route_ids = {row["route_id"] for row in routes_filtradas}
 
-# 2. Filtrar trips por route_id
+# 5. Filtrar trips por route_id
 trip_ids = set()
 shape_ids = set()
 with open("gtfs/trips.txt", encoding="utf-8") as f:
@@ -38,7 +39,7 @@ with open("gtfs/trips.txt", encoding="utf-8") as f:
             trip_ids.add(row["trip_id"])
             shape_ids.add(row["shape_id"])
 
-# 3. Filtrar stop_times por trip_id
+# 6. Filtrar stop_times por trip_id
 stop_ids = set()
 with open("gtfs/stop_times.txt", encoding="utf-8") as f:
     reader = csv.DictReader(f)
@@ -48,47 +49,31 @@ with open("gtfs/stop_times.txt", encoding="utf-8") as f:
             stop_times_filtrados.append(row)
             stop_ids.add(row["stop_id"])
 
-# 4. Filtrar stops por stop_id
+# 7. Filtrar stops por stop_id
 with open("gtfs/stops.txt", encoding="utf-8") as f:
     reader = csv.DictReader(f)
     stops_filtrados = [row for row in reader if row["stop_id"] in stop_ids]
 
-# 5. Filtrar shapes por shape_id y ordenar por secuencia
+# 8. Filtrar y agrupar shapes por shape_id
 with open("gtfs/shapes.txt", encoding="utf-8") as f:
     reader = csv.DictReader(f)
     shapes_filtrados = [row for row in reader if row["shape_id"] in shape_ids]
 
-# Función para ordenar puntos por shape_pt_sequence
+# Ordenar por secuencia
 shapes_filtrados.sort(key=lambda x: (x["shape_id"], int(x["shape_pt_sequence"])))
 
-# Agrupar puntos por shape_id para crear GeoJSON
-shapes_grouped = defaultdict(list)
+# Agrupar en JSON plano
+shapes_dict = defaultdict(list)
 for punto in shapes_filtrados:
-    shapes_grouped[punto["shape_id"]].append((
-        float(punto["shape_pt_lon"]),
-        float(punto["shape_pt_lat"])
-    ))
-
-# Crear GeoJSON FeatureCollection de líneas
-features = []
-for shape_id, coords in shapes_grouped.items():
-    features.append({
-        "type": "Feature",
-        "properties": {
-            "shape_id": shape_id
-        },
-        "geometry": {
-            "type": "LineString",
-            "coordinates": coords
-        }
+    shape_id = punto["shape_id"]
+    shapes_dict[shape_id].append({
+        "shape_pt_lat": punto["shape_pt_lat"],
+        "shape_pt_lon": punto["shape_pt_lon"],
+        "shape_pt_sequence": punto["shape_pt_sequence"],
+        "shape_dist_traveled": punto["shape_dist_traveled"]
     })
 
-geojson_shapes = {
-    "type": "FeatureCollection",
-    "features": features
-}
-
-# 6. Guardar resultados
+# 9. Guardar archivos
 def guardar(nombre, datos):
     with open(f"public/gtfs/{nombre}.json", "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=2)
@@ -99,6 +84,7 @@ guardar("trips", trips_filtrados)
 guardar("stop_times", stop_times_filtrados)
 guardar("stops", stops_filtrados)
 
-with open("public/gtfs/shapes.geojson", "w", encoding="utf-8") as f:
-    json.dump(geojson_shapes, f, ensure_ascii=False, indent=2)
+# Guardar shapes.json
+with open("public/gtfs/shapes.json", "w", encoding="utf-8") as f:
+    json.dump(shapes_dict, f, ensure_ascii=False, indent=2)
 print("✅ Guardado shapes.json")
