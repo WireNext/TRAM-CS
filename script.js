@@ -8,11 +8,10 @@ async function cargarDatosGTFS() {
       fetch(baseURL + 'stop_times.json').then(r => r.json()),
       fetch(baseURL + 'calendar_dates.json').then(r => r.json()),
       fetch(baseURL + 'shapes.json').then(r => r.json())
-
     ]);
 
     console.log("✅ Datos cargados");
-    iniciarMapa(stops, stopTimes, trips, routes);
+    iniciarMapa(stops, stopTimes, trips, routes, shapes);
 
   } catch (e) {
     console.error("❌ Error cargando GTFS:", e);
@@ -20,14 +19,55 @@ async function cargarDatosGTFS() {
   }
 }
 
-function iniciarMapa(stops, stopTimes, trips, routes) {
-  const map = L.map('map').setView([39.985, -0.5], 13); // Vista general Castelló
+function pintarShapes(map, shapes) {
+  // Agrupar puntos por shape_id
+  const shapesGrouped = {};
+
+  shapes.forEach(pt => {
+    if (!shapesGrouped[pt.shape_id]) {
+      shapesGrouped[pt.shape_id] = [];
+    }
+    shapesGrouped[pt.shape_id].push(pt);
+  });
+
+  const allLatLngs = [];
+
+  // Crear una polilínea para cada shape_id
+  for (const shape_id in shapesGrouped) {
+    const points = shapesGrouped[shape_id];
+    points.sort((a, b) => Number(a.shape_pt_sequence) - Number(b.shape_pt_sequence));
+
+    const latlngs = points.map(p => {
+      const lat = parseFloat(p.shape_pt_lat);
+      const lon = parseFloat(p.shape_pt_lon);
+      allLatLngs.push([lat, lon]);
+      return [lat, lon];
+    });
+
+    L.polyline(latlngs, {
+      color: '#007bff',
+      weight: 3,
+      opacity: 0.7
+    }).addTo(map);
+  }
+
+  // Ajustar la vista para que se vean todas las shapes
+  if (allLatLngs.length > 0) {
+    const bounds = L.latLngBounds(allLatLngs);
+    map.fitBounds(bounds);
+  }
+}
+
+function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
+  const map = L.map('map').setView([39.985, -0.5], 13);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  // Creamos el icono personalizado con un círculo y emoji bus
+  // Pintar las líneas shapes
+  pintarShapes(map, shapes);
+
   const busDivIcon = L.divIcon({
     html: `<div style="
       background: #0078A8; 
