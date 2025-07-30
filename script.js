@@ -20,7 +20,7 @@ async function cargarDatosGTFS() {
 }
 
 function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
-  const map = L.map('map').setView([39.985, -0.5], 13);
+  const map = L.map('map').setView([39.9864, -0.0513], 14);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
