@@ -1,10 +1,10 @@
-const map = L.map('map').setView([39.9864, -0.0513], 13); // Castellón
+const map = L.map('map').setView([39.9864, -0.0513], 13); // Centrado en Castellón
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Icono para paradas
+// Icono personalizado para paradas
 const paradaIcon = L.icon({
   iconUrl: 'https://cdn-icons-png.flaticon.com/512/252/252025.png',
   iconSize: [24, 24],
@@ -12,32 +12,34 @@ const paradaIcon = L.icon({
   popupAnchor: [0, -24]
 });
 
-// Cargar datos GTFS
 let stops = [];
 let stopTimes = [];
 let trips = [];
+let routes = [];
+let shapesGeoJSON = null;
 
+// Cargar todos los datos necesarios
 Promise.all([
-  fetch("public/gtfs/stops.json").then(r => r.json()),
-  fetch("public/gtfs/stop_times.json").then(r => r.json()),
-  fetch("public/gtfs/trips.json").then(r => r.json()),
-  fetch("public/gtfs/shapes.geojson").then(r => r.json())
-]).then(([stopsData, stopTimesData, tripsData, shapesGeoJSON]) => {
+  fetch('public/gtfs/stops.json').then(res => res.json()),
+  fetch('public/gtfs/stop_times.json').then(res => res.json()),
+  fetch('public/gtfs/trips.json').then(res => res.json()),
+  fetch('public/gtfs/routes.json').then(res => res.json()),
+  fetch('public/gtfs/shapes.geojson').then(res => res.json())
+]).then(([stopsData, stopTimesData, tripsData, routesData, shapesData]) => {
   stops = stopsData;
   stopTimes = stopTimesData;
   trips = tripsData;
+  routes = routesData;
+  shapesGeoJSON = shapesData;
 
-  // Mostrar paradas
+  // Pintar paradas
   stops.forEach(stop => {
-    const marker = L.marker([parseFloat(stop.stop_lat), parseFloat(stop.stop_lon)], { icon: paradaIcon })
-      .addTo(map)
-      .bindPopup("Cargando...");
+    const marker = L.marker([parseFloat(stop.stop_lat), parseFloat(stop.stop_lon)], { icon: paradaIcon }).addTo(map);
 
     marker.on('click', () => {
       const stopId = stop.stop_id;
-
-      // Obtener próximos horarios (solo los próximos 5)
       const ahora = new Date();
+
       const horarios = stopTimes
         .filter(st => st.stop_id === stopId)
         .map(st => {
@@ -47,36 +49,50 @@ Promise.all([
             route: trip ? trip.route_id : "Desconocida"
           };
         })
-        .filter(h => {
-          // Solo horarios futuros
-          const [h, m, s] = h.time.split(":").map(Number);
-          const horarioDate = new Date();
-          horarioDate.setHours(h, m, s || 0, 0);
-          return horarioDate > ahora;
+        .filter(item => {
+          const [hH, hM, hS] = item.time.split(":").map(Number);
+          const horaLlegada = new Date();
+          horaLlegada.setHours(hH, hM, hS || 0, 0);
+          return horaLlegada > ahora;
         })
         .sort((a, b) => a.time.localeCompare(b.time))
         .slice(0, 5);
 
-      let html = `<b>${stop.stop_name}</b><br>`;
-      if (horarios.length > 0) {
-        html += "<b>Próximas llegadas:</b><ul>";
-        horarios.forEach(h => {
-          html += `<li>${h.time} - Ruta ${h.route}</li>`;
-        });
-        html += "</ul>";
-      } else {
-        html += "No hay llegadas próximas.";
+      let html = `<b>${stop.stop_name}</b><br><u>Próximas llegadas:</u><ul>`;
+      horarios.forEach(el => {
+        html += `<li>${el.time} - Ruta ${el.route}</li>`;
+      });
+      html += '</ul>';
+
+      marker.bindPopup(html).openPopup();
+
+      // Mostrar las líneas (shapes) asociadas a las rutas
+      const routeIdsEnParada = new Set(horarios.map(el => el.route));
+
+      if (window.shapeLayer) {
+        map.removeLayer(window.shapeLayer);
       }
 
-      marker.getPopup().setContent(html).openOn(map);
+      const colores = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4'];
+
+      window.shapeLayer = L.geoJSON(shapesGeoJSON, {
+        filter: feature => routeIdsEnParada.has(feature.properties.route_id),
+        style: feature => {
+          const index = Array.from(routeIdsEnParada).indexOf(feature.properties.route_id);
+          return {
+            color: colores[index % colores.length],
+            weight: 4
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const route = routes.find(r => r.route_id === feature.properties.route_id);
+          if (route) {
+            layer.bindPopup(`<b>${route.route_short_name}</b><br>${route.route_long_name}`);
+          }
+        }
+      }).addTo(map);
     });
   });
-
-  // Mostrar shapes
-  L.geoJSON(shapesGeoJSON, {
-    style: {
-      color: '#007bff',
-      weight: 3
-    }
-  }).addTo(map);
-}).catch(console.error);
+}).catch(error => {
+  console.error("Error al cargar datos:", error);
+});
