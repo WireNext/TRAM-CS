@@ -1,6 +1,6 @@
 async function cargarDatosGTFS() {
   try {
-    const baseURL = 'public/gtfs/';
+    const baseURL = 'gtfs/';
     const [routes, trips, stops, stopTimes, calendarDates, shapes] = await Promise.all([
       fetch(baseURL + 'routes.json').then(r => r.json()),
       fetch(baseURL + 'trips.json').then(r => r.json()),
