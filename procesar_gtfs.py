@@ -53,40 +53,22 @@ with open("gtfs/stops.txt", encoding="utf-8") as f:
     reader = csv.DictReader(f)
     stops_filtrados = [row for row in reader if row["stop_id"] in stop_ids]
 
-# 5. Filtrar shapes por shape_id y ordenar por secuencia
+# 5. Filtrar shapes por shape_id y organizar como JSON
+shapes_json = defaultdict(list)
 with open("gtfs/shapes.txt", encoding="utf-8") as f:
     reader = csv.DictReader(f)
-    shapes_filtrados = [row for row in reader if row["shape_id"] in shape_ids]
+    for row in reader:
+        if row["shape_id"] in shape_ids:
+            shapes_json[row["shape_id"]].append({
+                "shape_pt_lat": row["shape_pt_lat"],
+                "shape_pt_lon": row["shape_pt_lon"],
+                "shape_pt_sequence": row["shape_pt_sequence"],
+                "shape_dist_traveled": row["shape_dist_traveled"]
+            })
 
-# Función para ordenar puntos por shape_pt_sequence
-shapes_filtrados.sort(key=lambda x: (x["shape_id"], int(x["shape_pt_sequence"])))
-
-# Agrupar puntos por shape_id para crear GeoJSON
-shapes_grouped = defaultdict(list)
-for punto in shapes_filtrados:
-    shapes_grouped[punto["shape_id"]].append((
-        float(punto["shape_pt_lon"]),
-        float(punto["shape_pt_lat"])
-    ))
-
-# Crear GeoJSON FeatureCollection de líneas
-features = []
-for shape_id, coords in shapes_grouped.items():
-    features.append({
-        "type": "Feature",
-        "properties": {
-            "shape_id": shape_id
-        },
-        "geometry": {
-            "type": "LineString",
-            "coordinates": coords
-        }
-    })
-
-geojson_shapes = {
-    "type": "FeatureCollection",
-    "features": features
-}
+# Ordenar por secuencia
+for puntos in shapes_json.values():
+    puntos.sort(key=lambda p: int(p["shape_pt_sequence"]))
 
 # 6. Guardar resultados
 def guardar(nombre, datos):
@@ -98,7 +80,4 @@ guardar("routes", routes_filtradas)
 guardar("trips", trips_filtrados)
 guardar("stop_times", stop_times_filtrados)
 guardar("stops", stops_filtrados)
-
-with open("public/gtfs/shapes.geojson", "w", encoding="utf-8") as f:
-    json.dump(geojson_shapes, f, ensure_ascii=False, indent=2)
-print("✅ Guardado shapes.json")
+guardar("shapes", shapes_json)
