@@ -2,18 +2,16 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Horarios por Parada</title>
+  <title>Mapa de paradas</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; }
+  </style>
 </head>
 <body>
-  <h1>Consulta de horarios por parada</h1>
+  <div id="map"></div>
 
-  <label for="paradas">Selecciona una parada:</label>
-  <select id="paradas">
-    <option disabled selected>-- Elegir parada --</option>
-  </select>
-
-  <ul id="resultados"></ul>
-
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
