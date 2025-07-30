@@ -1,62 +1,57 @@
 async function cargarDatosGTFS() {
   const baseURL = 'public/gtfs/';
 
-  const [routes, trips, stops, stopTimes, calendarDates] = await Promise.all([
+  const [routes, trips, stops, stopTimes] = await Promise.all([
     fetch(baseURL + 'routes.json').then(r => r.json()),
     fetch(baseURL + 'trips.json').then(r => r.json()),
     fetch(baseURL + 'stops.json').then(r => r.json()),
-    fetch(baseURL + 'stop_times.json').then(r => r.json()),
-    fetch(baseURL + 'calendar_dates.json').then(r => r.json())
+    fetch(baseURL + 'stop_times.json').then(r => r.json())
   ]);
 
-  const serviciosHoy = filtrarServiciosActivosHoy(calendarDates);
-  const viajesHoy = trips.filter(t => serviciosHoy.includes(t.service_id));
-
-  iniciarInterfaz(routes, viajesHoy, stops, stopTimes);
+  iniciarBusquedaPorParada(routes, trips, stops, stopTimes);
 }
 
-function filtrarServiciosActivosHoy(calendarDates) {
-  const hoy = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+function iniciarBusquedaPorParada(routes, trips, stops, stopTimes) {
+  const selectParadas = document.getElementById('paradas');
+  const lista = document.getElementById('resultados');
 
-  return calendarDates
-    .filter(cd => cd.date === hoy && cd.exception_type === '1')
-    .map(cd => cd.service_id);
-}
+  // Ordenar alfabéticamente por nombre de parada
+  stops.sort((a, b) => a.stop_name.localeCompare(b.stop_name));
 
-function iniciarInterfaz(routes, trips, stops, stopTimes) {
-  const selectLineas = document.getElementById('lineas');
-  const listaHorarios = document.getElementById('resultados');
-
-  const routeIdsDisponibles = [...new Set(trips.map(t => t.route_id))];
-  const rutasDisponibles = routes.filter(r => routeIdsDisponibles.includes(r.route_id));
-
-  rutasDisponibles.forEach(route => {
+  stops.forEach(stop => {
     const option = document.createElement('option');
-    option.value = route.route_id;
-    option.textContent = `${route.route_short_name} - ${route.route_long_name}`;
-    selectLineas.appendChild(option);
+    option.value = stop.stop_id;
+    option.textContent = stop.stop_name;
+    selectParadas.appendChild(option);
   });
 
-  selectLineas.addEventListener('change', () => {
-    const routeId = selectLineas.value;
-    listaHorarios.innerHTML = '';
+  selectParadas.addEventListener('change', () => {
+    const stopId = selectParadas.value;
+    lista.innerHTML = '';
 
-    const viajesRuta = trips.filter(t => t.route_id === routeId);
-    if (viajesRuta.length === 0) {
-      listaHorarios.innerHTML = '<li>No hay viajes activos para hoy.</li>';
+    // Buscar todas las entradas de stop_times para esta parada
+    const horarios = stopTimes.filter(st => st.stop_id === stopId);
+
+    if (horarios.length === 0) {
+      lista.innerHTML = '<li>No hay horarios para esta parada.</li>';
       return;
     }
 
-    const trip = viajesRuta[0]; // puedes extenderlo para mostrar todos
-    const horarios = stopTimes
-      .filter(st => st.trip_id === trip.trip_id)
-      .sort((a, b) => a.stop_sequence - b.stop_sequence);
+    horarios.sort((a, b) => a.departure_time.localeCompare(b.departure_time));
 
     horarios.forEach(horario => {
-      const parada = stops.find(s => s.stop_id === horario.stop_id);
+      const trip = trips.find(t => t.trip_id === horario.trip_id);
+      if (!trip) return;
+
+      const ruta = routes.find(r => r.route_id === trip.route_id);
+      if (!ruta) return;
+
+      const texto = `${horario.departure_time} - Línea ${ruta.route_short_name || ''} ${ruta.route_long_name || ''}`;
       const li = document.createElement('li');
-      li.textContent = `${parada.stop_name} → ${horario.departure_time}`;
-      listaHorarios.appendChild(li);
+      li.textContent = texto;
+      lista.appendChild(li);
     });
   });
 }
+
+cargarDatosGTFS();
