@@ -118,7 +118,7 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
 
       proximosMinutos.forEach(h => {
         // Si quedan 1 minuto o menos, añadimos la clase parpadeo
-        if (h.diffMin <= 1) {
+        if (h.diffMin <= 2) {
           html += `<li><b>${h.linea}</b> ${h.nombre}: <span class="parpadeo">en ${Math.round(h.diffMin)} min</span></li>`;
         } else {
           html += `<li><b>${h.linea}</b> ${h.nombre}: en ${Math.round(h.diffMin)} min</li>`;
