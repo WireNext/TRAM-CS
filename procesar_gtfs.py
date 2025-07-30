@@ -4,33 +4,28 @@ import csv
 import json
 import os
 
-# URL del GTFS
 url = "https://gvinterbus.gva.es/estatico/gtfs.zip"
 
-# Descargar el archivo ZIP
 print("Descargando GTFS...")
 r = requests.get(url)
 with open("gtfs.zip", "wb") as f:
     f.write(r.content)
 
-# Extraer el ZIP
 print("Extrayendo archivos...")
 with zipfile.ZipFile("gtfs.zip", 'r') as zip_ref:
     zip_ref.extractall("gtfs")
 
-# Crear carpeta de salida
 os.makedirs("public/gtfs", exist_ok=True)
 
-# Archivos que vamos a procesar
 archivos = [
     "routes.txt",
     "trips.txt",
     "stops.txt",
     "stop_times.txt",
-    "calendar_dates.txt"
+    "calendar_dates.txt",
+    "shapes.txt"
 ]
 
-# Convertir a JSON
 for archivo in archivos:
     ruta = os.path.join("gtfs", archivo)
 
@@ -41,6 +36,9 @@ for archivo in archivos:
     with open(ruta, newline='', encoding="utf-8") as f:
         reader = csv.DictReader(f)
         datos = list(reader)
+
+        if archivo == "shapes.txt":
+            datos.sort(key=lambda x: (x['shape_id'], int(x['shape_pt_sequence'])))
 
         salida = archivo.replace(".txt", ".json")
         salida_path = os.path.join("public/gtfs", salida)
