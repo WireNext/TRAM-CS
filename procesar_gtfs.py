@@ -3,86 +3,69 @@ import requests
 import csv
 import json
 import os
-from datetime import datetime
 
 url = "https://gvinterbus.gva.es/estatico/gtfs.zip"
 
-print("Descargando GTFS...")
+print("📦 Descargando GTFS...")
 r = requests.get(url)
 with open("gtfs.zip", "wb") as f:
     f.write(r.content)
 
-print("Extrayendo archivos...")
+print("📂 Extrayendo archivos...")
 with zipfile.ZipFile("gtfs.zip", 'r') as zip_ref:
     zip_ref.extractall("gtfs")
 
 os.makedirs("public/gtfs", exist_ok=True)
 
-archivos = [
-    "routes.txt",
-    "trips.txt",
-    "stops.txt",
-    "stop_times.txt",
-    "calendar_dates.txt",
-    "shapes.txt"
-]
+# 1. Filtrar route_id de T1 a T4
+rutas_deseadas = {"T1", "T2", "T3", "T4"}
+route_ids = set()
+with open("gtfs/routes.txt", encoding="utf-8") as f:
+    reader = csv.DictReader(f)
+    routes_filtradas = [row for row in reader if row["route_short_name"] in rutas_deseadas]
+    route_ids = {row["route_id"] for row in routes_filtradas}
 
-# Cargar datos de trips y calendar_dates antes de convertir a JSON
-trips = []
-calendar_dates = []
+# 2. Filtrar trips por route_id
+trip_ids = set()
+shape_ids = set()
+with open("gtfs/trips.txt", encoding="utf-8") as f:
+    reader = csv.DictReader(f)
+    trips_filtrados = []
+    for row in reader:
+        if row["route_id"] in route_ids:
+            trips_filtrados.append(row)
+            trip_ids.add(row["trip_id"])
+            shape_ids.add(row["shape_id"])
 
-for archivo in archivos:
-    ruta = os.path.join("gtfs", archivo)
+# 3. Filtrar stop_times por trip_id
+stop_ids = set()
+with open("gtfs/stop_times.txt", encoding="utf-8") as f:
+    reader = csv.DictReader(f)
+    stop_times_filtrados = []
+    for row in reader:
+        if row["trip_id"] in trip_ids:
+            stop_times_filtrados.append(row)
+            stop_ids.add(row["stop_id"])
 
-    if not os.path.exists(ruta):
-        print(f"⚠️ No se encontró {archivo}, se omite.")
-        continue
+# 4. Filtrar stops por stop_id
+with open("gtfs/stops.txt", encoding="utf-8") as f:
+    reader = csv.DictReader(f)
+    stops_filtrados = [row for row in reader if row["stop_id"] in stop_ids]
 
-    with open(ruta, newline='', encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        datos = list(reader)
+# 5. Filtrar shapes por shape_id y ordenar por secuencia
+with open("gtfs/shapes.txt", encoding="utf-8") as f:
+    reader = csv.DictReader(f)
+    shapes_filtrados = [row for row in reader if row["shape_id"] in shape_ids]
+    shapes_filtrados.sort(key=lambda x: (x["shape_id"], int(x["shape_pt_sequence"])))
 
-        if archivo == "trips.txt":
-            trips = datos
-        elif archivo == "calendar_dates.txt":
-            calendar_dates = datos
+# 6. Guardar resultados
+def guardar(nombre, datos):
+    with open(f"public/gtfs/{nombre}.json", "w", encoding="utf-8") as f:
+        json.dump(datos, f, ensure_ascii=False, indent=2)
+    print(f"✅ Guardado {nombre}.json")
 
-# Fecha actual para filtrar servicios activos
-hoy = datetime.now().strftime("%Y%m%d")
-
-# Obtener servicios activos hoy (exception_type == '1' indica activo)
-servicios_activos = {cd['service_id'] for cd in calendar_dates if cd['date'] == hoy and cd['exception_type'] == '1'}
-print(f"Servicios activos hoy: {len(servicios_activos)}")
-
-# Filtrar trips activos
-trips_activos = [trip for trip in trips if trip['service_id'] in servicios_activos]
-print(f"Trips activos hoy: {len(trips_activos)}")
-
-# Obtener shape_ids usados en trips activos
-shape_ids_usados = {trip['shape_id'] for trip in trips_activos if trip['shape_id']}
-print(f"Shapes usados en trips activos: {len(shape_ids_usados)}")
-
-# Ahora procesar todos los archivos y guardarlos, pero shapes.txt filtrado
-for archivo in archivos:
-    ruta = os.path.join("gtfs", archivo)
-
-    if not os.path.exists(ruta):
-        continue
-
-    with open(ruta, newline='', encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        datos = list(reader)
-
-        if archivo == "shapes.txt":
-            # Ordenar por shape_id y shape_pt_sequence
-            datos.sort(key=lambda x: (x['shape_id'], int(x['shape_pt_sequence'])))
-            # Filtrar solo shapes usados
-            datos = [d for d in datos if d['shape_id'] in shape_ids_usados]
-
-        salida = archivo.replace(".txt", ".json")
-        salida_path = os.path.join("public/gtfs", salida)
-
-        with open(salida_path, "w", encoding="utf-8") as out:
-            json.dump(datos, out, ensure_ascii=False, indent=2)
-
-        print(f"✅ Procesado: {archivo} → {salida_path}")
+guardar("routes", routes_filtradas)
+guardar("trips", trips_filtrados)
+guardar("stop_times", stop_times_filtrados)
+guardar("stops", stops_filtrados)
+guardar("shapes", shapes_filtrados)
