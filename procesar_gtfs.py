@@ -72,7 +72,7 @@ for puntos in shapes_json.values():
 
 # 6. Guardar resultados
 def guardar(nombre, datos):
-    with open(f"public/gtfs/{nombre}.json", "w", encoding="utf-8") as f:
+    with open(f"gtfs/{nombre}.json", "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=2)
     print(f"✅ Guardado {nombre}.json")
 
