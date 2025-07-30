@@ -101,4 +101,4 @@ guardar("stops", stops_filtrados)
 
 with open("public/gtfs/shapes.geojson", "w", encoding="utf-8") as f:
     json.dump(geojson_shapes, f, ensure_ascii=False, indent=2)
-print("✅ Guardado shapes.geojson")
+print("✅ Guardado shapes.json")
