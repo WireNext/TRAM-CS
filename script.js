@@ -1,160 +1,103 @@
+const map = L.map("map").setView([39.985, -0.05], 13);
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
 async function cargarDatosGTFS() {
   try {
-    const baseURL = 'public/gtfs/';
-    const [routes, trips, stops, stopTimes, calendarDates, shapes] = await Promise.all([
-      fetch(baseURL + 'routes.json').then(r => r.json()),
-      fetch(baseURL + 'trips.json').then(r => r.json()),
-      fetch(baseURL + 'stops.json').then(r => r.json()),
-      fetch(baseURL + 'stop_times.json').then(r => r.json()),
-      fetch(baseURL + 'calendar_dates.json').then(r => r.json()),
-      fetch(baseURL + 'shapes.json').then(r => r.json())
+    const [routes, stops, stopTimes, trips, shapes] = await Promise.all([
+      fetch("gtfs/routes.json").then(res => res.json()),
+      fetch("gtfs/stops.json").then(res => res.json()),
+      fetch("gtfs/stop_times.json").then(res => res.json()),
+      fetch("gtfs/trips.json").then(res => res.json()),
+      fetch("gtfs/shapes.json").then(res => res.json())
     ]);
-
-    console.log("✅ Datos cargados");
-    iniciarMapa(stops, stopTimes, trips, routes, shapes);
-
-  } catch (e) {
-    console.error("❌ Error cargando GTFS:", e);
-    alert("Error cargando datos. Mira la consola.");
+    iniciarMapa(routes, stops, stopTimes, trips, shapes);
+  } catch (error) {
+    console.error("❌ Error cargando GTFS:", error);
   }
 }
 
-function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
-  const map = L.map('map').setView([39.9864, -0.0513], 14);
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
-
-  const busDivIcon = L.divIcon({
-    html: `<div style="
-      background: #0078A8; 
-      border-radius: 50%; 
-      width: 30px; 
-      height: 30px; 
-      display: flex; 
-      justify-content: center; 
-      align-items: center; 
-      color: white; 
-      font-weight: bold;
-      font-size: 18px;
-      ">
-      🚌
-      </div>`,
-    className: '',
-    iconSize: [30, 30],
-    iconAnchor: [15, 30],
-    popupAnchor: [0, -30]
+function iniciarMapa(routes, stops, stopTimes, trips, shapes) {
+  const tripsPorStop = {};
+  stopTimes.forEach(st => {
+    if (!tripsPorStop[st.stop_id]) tripsPorStop[st.stop_id] = [];
+    tripsPorStop[st.stop_id].push(st);
   });
 
-  // Añadimos estilos para parpadeo
-  const style = document.createElement('style');
-  style.innerHTML = `
-    @keyframes parpadeo {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
-    .parpadeo {
-      animation: parpadeo 1s infinite;
-      font-weight: bold;
-      color: red;
-    }
-  `;
-  document.head.appendChild(style);
+  const tripPorId = Object.fromEntries(trips.map(t => [t.trip_id, t]));
+  const routePorId = Object.fromEntries(routes.map(r => [r.route_id, r]));
 
-  const clusterGroup = L.markerClusterGroup();
-
+  // Añadir paradas
   stops.forEach(stop => {
-    const marker = L.marker([stop.stop_lat, stop.stop_lon], { icon: busDivIcon });
-    marker.bindPopup("Cargando...");
+    const lat = parseFloat(stop.stop_lat);
+    const lon = parseFloat(stop.stop_lon);
+    const marker = L.marker([lat, lon]).addTo(map);
 
-    marker.on('click', () => {
-      const horarios = stopTimes
-        .filter(st => st.stop_id === stop.stop_id)
-        .map(st => {
-          const trip = trips.find(t => t.trip_id === st.trip_id);
-          if (!trip) return null;
+    const stop_id = stop.stop_id;
+    const entradas = tripsPorStop[stop_id] || [];
 
-          const ruta = routes.find(r => r.route_id === trip.route_id);
-          if (!ruta) return null;
+    const ahora = new Date();
+    const ahoraSegundos = ahora.getHours() * 3600 + ahora.getMinutes() * 60 + ahora.getSeconds();
 
-          return {
-            linea: ruta.route_short_name || '',
-            nombre: ruta.route_long_name || '',
-            hora: st.departure_time
-          };
-        })
-        .filter(h => h !== null)
-        .sort((a, b) => a.hora.localeCompare(b.hora));
+    const futuros = entradas
+      .map(e => {
+        const [h, m, s] = e.arrival_time.split(":").map(Number);
+        const t = h * 3600 + m * 60 + s;
+        return { ...e, segundos: t };
+      })
+      .filter(e => e.segundos >= ahoraSegundos)
+      .sort((a, b) => a.segundos - b.segundos);
 
-      const ahora = new Date();
+    const siguientes = futuros.slice(0, 5);
+    let html = `<b>${stop.stop_name}</b><br>`;
+    siguientes.forEach((e, i) => {
+      const trip = tripPorId[e.trip_id];
+      const route = routePorId[trip.route_id];
+      const minutos = Math.floor((e.segundos - ahoraSegundos) / 60);
+      const hora = new Date();
+      hora.setHours(0, 0, 0, 0);
+      hora.setSeconds(e.segundos);
+      const horaStr = hora.toTimeString().slice(0, 5);
 
-      function horaAFecha(horaStr) {
-        const [hh, mm, ss] = horaStr.split(':').map(Number);
-        const fecha = new Date(ahora);
-        fecha.setHours(hh, mm, ss, 0);
-        return fecha;
+      if (i < 2) {
+        const clase = minutos <= 2 ? "parpadeo" : "";
+        html += `<span class="${clase}">En ${minutos} min (${route.route_short_name})</span><br>`;
+      } else {
+        html += `A las ${horaStr} (${route.route_short_name})<br>`;
       }
-
-      const horariosConDiff = horarios.map(h => {
-        const fechaSalida = horaAFecha(h.hora);
-        let diffMin = (fechaSalida - ahora) / 60000;
-        if (diffMin < 0) diffMin += 24 * 60;
-        return { ...h, diffMin, fechaSalida };
-      });
-
-      horariosConDiff.sort((a, b) => a.diffMin - b.diffMin);
-      const futuros = horariosConDiff.filter(h => h.diffMin >= 0);
-
-      if (futuros.length === 0) {
-        marker.setPopupContent(`<strong>${stop.stop_name}</strong><br>No hay más servicios hoy.`);
-        return;
-      }
-
-      const proximosMinutos = futuros.slice(0, 2);
-      const siguientesHoras = futuros.slice(2, 5);
-
-      let html = `<strong>${stop.stop_name}</strong><br><ul>`;
-
-      proximosMinutos.forEach(h => {
-        // Si quedan 1 minuto o menos, añadimos la clase parpadeo
-        if (h.diffMin <= 2) {
-          html += `<li><b>${h.linea}</b> ${h.nombre}: <span class="parpadeo">en ${Math.round(h.diffMin)} min</span></li>`;
-        } else {
-          html += `<li><b>${h.linea}</b> ${h.nombre}: en ${Math.round(h.diffMin)} min</li>`;
-        }
-      });
-
-      siguientesHoras.forEach(h => {
-        html += `<li><b>${h.linea}</b> ${h.nombre}: ${h.hora}</li>`;
-      });
-
-      html += '</ul>';
-
-      marker.setPopupContent(html);
     });
 
-    clusterGroup.addLayer(marker);
+    marker.bindPopup(html);
   });
 
-  map.addLayer(clusterGroup);
-
-  // Dibujar shapes
-  const shapesPorId = {};
-  shapes.forEach(pt => {
-    if (!shapesPorId[pt.shape_id]) shapesPorId[pt.shape_id] = [];
-    shapesPorId[pt.shape_id].push(pt);
-  });
-
-  for (const shapeId in shapesPorId) {
-    shapesPorId[shapeId].sort((a, b) => parseInt(a.shape_pt_sequence) - parseInt(b.shape_pt_sequence));
-    const latlngs = shapesPorId[shapeId].map(pt => [parseFloat(pt.shape_pt_lat), parseFloat(pt.shape_pt_lon)]);
-    L.polyline(latlngs, {
-      color: 'blue',
+  // Añadir shapes
+  Object.entries(shapes).forEach(([shape_id, puntos]) => {
+    const coords = puntos.map(p => [parseFloat(p.shape_pt_lat), parseFloat(p.shape_pt_lon)]);
+    const polyline = L.polyline(coords, {
+      color: "#007bff",
       weight: 3,
-      opacity: 0.7
+      opacity: 0.6
     }).addTo(map);
-  }
+    polyline.bindPopup(`Shape: ${shape_id}`);
+  });
 }
 
+// Estilo parpadeo
+const style = document.createElement("style");
+style.innerHTML = `
+.parpadeo {
+  animation: parpadear 1s infinite;
+  font-weight: bold;
+  color: red;
+}
+@keyframes parpadear {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 1; }
+}`;
+document.head.appendChild(style);
+
+// Iniciar
 cargarDatosGTFS();
