@@ -90,9 +90,9 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
       const ahora = new Date();
 
       function horaAFecha(horaStr) {
-        const [hh, mm] = horaStr.split(':').map(Number);
+        const [hh, mm, ss] = horaStr.split(':').map(Number);
         const fecha = new Date(ahora);
-        fecha.setHours(hh, mm 0);
+        fecha.setHours(hh, mm, ss, 0);
         return fecha;
       }
 
@@ -117,8 +117,8 @@ function iniciarMapa(stops, stopTimes, trips, routes, shapes) {
       let html = `<strong>${stop.stop_name}</strong><br><ul>`;
 
       proximosMinutos.forEach(h => {
-        // Si quedan 2 minuto o menos, añadimos la clase parpadeo
-        if (h.diffMin <= 2) {
+        // Si quedan 1 minuto o menos, añadimos la clase parpadeo
+        if (h.diffMin <= 1) {
           html += `<li><b>${h.linea}</b> ${h.nombre}: <span class="parpadeo">en ${Math.round(h.diffMin)} min</span></li>`;
         } else {
           html += `<li><b>${h.linea}</b> ${h.nombre}: en ${Math.round(h.diffMin)} min</li>`;
