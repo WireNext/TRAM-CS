@@ -1,77 +1,101 @@
-const map = L.map('map').setView([39.985, -0.05], 13);
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 18,
-}).addTo(map);
-
-let stops = [];
-let stopTimes = [];
-let trips = [];
-let routeIdToShortName = {}; // <-- diccionario para mapear route_id a número de línea
-
-async function cargarDatos() {
+async function cargarDatosGTFS() {
   try {
-    const [stopsData, stopTimesData, tripsData, shapesData, routesData] = await Promise.all([
-      fetch("public/gtfs/stops.json").then(r => r.json()),
-      fetch("public/gtfs/stop_times.json").then(r => r.json()),
-      fetch("public/gtfs/trips.json").then(r => r.json()),
-      fetch("public/gtfs/shapes.json").then(r => r.json()),
-      fetch("public/gtfs/routes.json").then(r => r.json())  // <-- cargamos routes
+    const baseURL = 'public/gtfs/';
+    const [routes, trips, stops, stopTimes, calendarDates] = await Promise.all([
+      fetch(baseURL + 'routes.json').then(r => r.json()),
+      fetch(baseURL + 'trips.json').then(r => r.json()),
+      fetch(baseURL + 'stops.json').then(r => r.json()),
+      fetch(baseURL + 'stop_times.json').then(r => r.json()),
+      fetch(baseURL + 'calendar_dates.json').then(r => r.json())
     ]);
 
-    stops = stopsData;
-    stopTimes = stopTimesData;
-    trips = tripsData;
+    console.log("✅ Datos cargados");
+    iniciarMapa(stops, stopTimes, trips, routes);
 
-    // Crear el diccionario route_id -> route_short_name
-    routesData.forEach(route => {
-      routeIdToShortName[route.route_id] = route.route_short_name;
-    });
-
-    // Dibujar shapes
-    for (const [shape_id, points] of Object.entries(shapesData)) {
-      if (Array.isArray(points)) {
-        const latlngs = points.map(p => [p.lat, p.lon]);
-        L.polyline(latlngs, {
-          color: '#007bff',
-          weight: 3,
-          opacity: 0.7
-        }).addTo(map);
-      } else {
-        console.warn(`Los puntos para shape_id ${shape_id} no son un array`, points);
-      }
-    }
-
-    // Añadir paradas
-    stops.forEach(stop => {
-      const marker = L.marker([parseFloat(stop.stop_lat), parseFloat(stop.stop_lon)])
-        .addTo(map)
-        .bindPopup("Cargando...");
-
-      marker.on('click', () => {
-        const arrivals = stopTimes
-          .filter(st => st.stop_id === stop.stop_id)
-          .slice(0, 5)
-          .map(st => {
-            const trip = trips.find(t => t.trip_id === st.trip_id);
-            // En vez de trip.route_id mostramos el número de línea
-            const linea = routeIdToShortName[trip?.route_id] || "?";
-            return `${linea} → ${st.arrival_time}`;
-          });
-
-        const content = `
-          <b>${stop.stop_name}</b><br>
-          <b>Próximas llegadas:</b><br>
-          <ul>${arrivals.map(a => `<li>${a}</li>`).join('')}</ul>
-        `;
-
-        marker.setPopupContent(content);
-      });
-    });
-
-  } catch (err) {
-    console.error("Error al cargar datos:", err);
+  } catch (e) {
+    console.error("❌ Error cargando GTFS:", e);
+    alert("Error cargando datos. Mira la consola.");
   }
 }
 
-cargarDatos();
+function iniciarMapa(stops, stopTimes, trips, routes) {
+  const map = L.map('map').setView([39.5, -0.4], 9); // Vista general Comunitat Valenciana
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Creamos el icono personalizado con un círculo y emoji bus
+  const busDivIcon = L.divIcon({
+    html: `<div style="
+      background: #0078A8; 
+      border-radius: 50%; 
+      width: 30px; 
+      height: 30px; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      color: white; 
+      font-weight: bold;
+      font-size: 18px;
+      ">
+      🚌
+      </div>`,
+    className: '',
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    popupAnchor: [0, -30]
+  });
+
+  const clusterGroup = L.markerClusterGroup();
+
+  stops.forEach(stop => {
+    const marker = L.marker([stop.stop_lat, stop.stop_lon], { icon: busDivIcon });
+    marker.bindPopup("Cargando...");
+
+    marker.on('click', () => {
+      const horarios = stopTimes
+        .filter(st => st.stop_id === stop.stop_id)
+        .map(st => {
+          const trip = trips.find(t => t.trip_id === st.trip_id);
+          if (!trip) return null;
+
+          const ruta = routes.find(r => r.route_id === trip.route_id);
+          if (!ruta) return null;
+
+          return {
+            linea: ruta.route_short_name || '',
+            nombre: ruta.route_long_name || '',
+            hora: st.departure_time
+          };
+        })
+        .filter(h => h !== null)
+        .sort((a, b) => a.hora.localeCompare(b.hora));
+
+      const ahora = new Date();
+      const horaActual = ahora.getHours().toString().padStart(2, '0') + ':' +
+                         ahora.getMinutes().toString().padStart(2, '0') + ':00';
+
+      const siguientes = horarios.filter(h => h.hora >= horaActual).slice(0, 5);
+
+      if (siguientes.length === 0) {
+        marker.setPopupContent(`<strong>${stop.stop_name}</strong><br>No hay más servicios hoy.`);
+        return;
+      }
+
+      const html = `<strong>${stop.stop_name}</strong><br><ul>` +
+        siguientes.map(h =>
+          `<li><b>Línea ${h.linea}</b>: ${h.hora}</li>`
+        ).join('') +
+        `</ul>`;
+
+      marker.setPopupContent(html);
+    });
+
+    clusterGroup.addLayer(marker);
+  });
+
+  map.addLayer(clusterGroup);
+}
+
+cargarDatosGTFS();
