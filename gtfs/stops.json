@@ -216,12 +216,6 @@
     "stop_lon": "-0.051219219"
   },
   {
-    "stop_id": "5105140112",
-    "stop_name": "UJI (Ágora) [Castelló de la Plana]",
-    "stop_lat": "39.994463999",
-    "stop_lon": "-0.068611"
-  },
-  {
     "stop_id": "5105160106",
     "stop_name": "camí Serradal-Pinar Golf [Castelló de la Plana]",
     "stop_lat": "39.982952999",
@@ -238,6 +232,12 @@
     "stop_name": "av. Ferrandis Salvador - front 10 [Castelló de la Plana]",
     "stop_lat": "39.981601999",
     "stop_lon": "0.019471"
+  },
+  {
+    "stop_id": "5105140112",
+    "stop_name": "Universitat Jaume I - Ágora",
+    "stop_lat": "39.994464",
+    "stop_lon": "-0.068611"
   },
   {
     "stop_id": "5107170203",
